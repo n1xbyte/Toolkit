@@ -54,7 +54,7 @@ def main():
 		SWITCHES.append("-Pn")
 
 	# Start Threads
-	print "\nSpinning up threads"
+	print "\n[+] Spinning up threads"
 	for x in range(0,3):
 		ranMAC = randomMAC()
 		t = threading.Thread(name='Thread' + str(x), target=nmapScan, args=(ranMAC,))
@@ -65,7 +65,7 @@ def main():
 	for x in range(0,3):
 		killme = THREAD_POOL.pop()
 		killme.join()
-	print "Threads killed cleanly"
+	print "[+] Threads killed\n"
 
 	# Total list
 	countin = list(itertools.chain.from_iterable(TOTAL_PORTS))
@@ -73,15 +73,14 @@ def main():
 	# Unique ports throughout the total
 	unique = sorted(set(countin))
 
-	print "Host: " + sys.argv[1]
+	print "[*] Host: " + sys.argv[1]
 
 	# Logic for open ports
 	for x in range(0, len(unique)):
 		 if countin.count(str(unique[x])) == 3:
-		 	print "Port " + str(unique[x]) + " appears open"
+		 	print "\tPort " + str(unique[x]) + " appears open"
 
 if __name__ == '__main__':
 	main()
 	print "\n"
 	sys.exit(-1)
-	
