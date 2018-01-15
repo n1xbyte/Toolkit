@@ -1,7 +1,7 @@
 import logging
 logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
 from scapy.all import *
-import sys, socket, string, binascii, threading, signal, os
+import sys, socket, string, binascii, threading, signal, os, re, pprint
 from sys import stdout
 from subprocess import check_output, CalledProcessError
 
@@ -10,7 +10,7 @@ TIMEOUT = {}
 TIMEOUT['timer'] = 0.4
 THREAD_POOL = []
 THREAD_CNT = 1
-optionslist = {"server_id":"DHCP Server", 66:"Boot File Server", 67:"Boot File Name", "subnet_mask":"Subnet Mask"}
+optionslist = {"server_id":"DHCP Server", 66:"Boot File Server", 67:"Boot File Name", "subnet_mask":"Subnet Mask", "domain":"Domain", 121:"Static Routes"}
 
 def usage():
     print "\n[-] Usage: The script takes one parameter, a network interface"
@@ -37,6 +37,14 @@ def signal_handler(signal, frame):
     for t in THREAD_POOL:
         t.kill_received = True
     sys.exit(0)
+
+def replaceNth(s, source, target, n):
+    inds = [i for i in range(len(s) - len(source)+1) if s[i:i+len(source)]==source]
+    if len(inds) < n:
+        return
+    s = list(s)
+    s[inds[n-1]:inds[n-1]+len(source)] = target
+    return ''.join(s)
 
 def initialchecks():
     if len(sys.argv) != 2:
@@ -67,7 +75,7 @@ class send_dhcp(threading.Thread):
 
             myoptions = [
                 ("message-type", "discover"),
-                ("param_req_list", "\x01", "\x02", "\x03", "\x04", "\x11", "\x12", "\x13", "\x14", "\x15", "\x16", "\x17", "\x18", "\x22", "\x23", "\x28", "\x40", "\x41", "\x42", "\x43", "\x50", "\x51", "\x54", "\x58", "\x59", "\x60", "\x66", "\x67"),
+                ("param_req_list", "\x01", "\x0f", "\x42", "\x43", "\x79"),
                 ("max_dhcp_size", 1500),
                 ("client_id", chr(1), mac2str(m)),
                 ("lease_time", 10000),
@@ -99,12 +107,27 @@ class sniff_dhcp(threading.Thread):
                     localxid = pkt[BOOTP].xid
 
                     zearray = pkt[DHCP].options
-                    #print zearray
                     for item in zearray:
                         if isinstance(item, (tuple, list)):
                             k, v = item
                             if k in optionslist:
-                                print "\t{}: {}".format(optionslist[k],v)
+                                if k == 121:
+                                    final = []
+                                    splitem = " ".join(v.encode('hex')[i:i+2] for i in range(0, len(v.encode('hex')), 2)).split()
+                                    groupem = list(splitem[i:i+8] for i in range(0, len(splitem), 8))
+                                    for i in range(len(groupem)):
+                                        for g in range(len(groupem[i])):
+                                            p = str(int(groupem[i][g], 16))
+                                            final.append(p)
+                                    rev = list(reversed(final))
+                                    regroupem = list(rev[i:i+8] for i in range(0, len(rev), 8))
+                                    print "\t{}:".format(optionslist[k])
+                                    for i in range(len(regroupem)):
+                                        split1 = replaceNth('.'.join(regroupem[i]), '.', '\tSubnet: ', 4)
+                                        split2 = replaceNth(split1, '.', '.0/', 6)
+                                        print "\t\tGateway: {}".format(split2)
+                                else: 
+                                    print "\t{}: {}".format(optionslist[k],v)
                     for t in THREAD_POOL:
                         signal_handler(signal.SIGINT, 1)
                         t.join()
