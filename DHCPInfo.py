@@ -38,13 +38,23 @@ def signal_handler(signal, frame):
         t.kill_received = True
     sys.exit(0)
 
-def replaceNth(s, source, target, n):
-    inds = [i for i in range(len(s) - len(source)+1) if s[i:i+len(source)]==source]
-    if len(inds) < n:
-        return
-    s = list(s)
-    s[inds[n-1]:inds[n-1]+len(source)] = target
-    return ''.join(s)
+def getstatics(listz):
+    results = []
+    num = 9
+
+    if len(listz) > 0:
+        first = listz[0]
+
+        if first == '08':
+            num = 6
+        elif first == '10':
+            num = 7
+        elif first == '18':
+            num = 8
+        results.append(listz[0:num])
+        results.extend(getstatics(listz[num:]))
+
+    return results
 
 def initialchecks():
     if len(sys.argv) != 2:
@@ -112,26 +122,29 @@ class sniff_dhcp(threading.Thread):
                             k, v = item
                             if k in optionslist:
                                 if k == 121:
-                                    final = []
-                                    splitem = " ".join(v.encode('hex')[i:i+2] for i in range(0, len(v.encode('hex')), 2)).split()
-                                    groupem = list(splitem[i:i+8] for i in range(0, len(splitem), 8))
-                                    for i in range(len(groupem)):
-                                        for g in range(len(groupem[i])):
-                                            p = str(int(groupem[i][g], 16))
-                                            final.append(p)
-                                    rev = list(reversed(final))
-                                    regroupem = list(rev[i:i+8] for i in range(0, len(rev), 8))
                                     print "\t{}:".format(optionslist[k])
-                                    for i in range(len(regroupem)):
-                                        split1 = replaceNth('.'.join(regroupem[i]), '.', '\tSubnet: ', 4)
-                                        split2 = replaceNth(split1, '.', '.0/', 6)
-                                        print "\t\tGateway: {}".format(split2)
+                                    final = []
+                                    # Joins bytes to one large list
+                                    splitem = " ".join(v.encode('hex')[i:i+2] for i in range(0, len(v.encode('hex')), 2)).split()
+                                    results = getstatics(splitem)
+                                    
+                                    for i in results:
+                                        mask = str(int(i[0], 16))
+                                        router = [str(int(x, 16)) for x in i[-4:]]
+                                        ip = [str(int(x, 16)) for x in i[1:-4]]
+                                        if len(ip) < 4:
+                                            ip.extend(['0'] * (4 - len(ip)))
+
+                                        ipjoin = '.'.join(ip) + "/" + mask
+                                        router = '.'.join(router)
+                                        print "\t\tRouter:%s\tSubnet:%s" % (router, ipjoin)
+
                                 else: 
                                     print "\t{}: {}".format(optionslist[k],v)
+
                     for t in THREAD_POOL:
                         signal_handler(signal.SIGINT, 1)
                         t.join()
-
 
 def main():
     initialchecks() 
