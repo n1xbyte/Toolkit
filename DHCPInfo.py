@@ -1,7 +1,7 @@
 import logging
 logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
 from scapy.all import *
-import sys, socket, string, binascii, threading, signal, os, re, pprint
+import sys, socket, string, binascii, threading, signal, os, re, time
 from sys import stdout
 from subprocess import check_output, CalledProcessError
 
@@ -10,7 +10,8 @@ TIMEOUT = {}
 TIMEOUT['timer'] = 0.4
 THREAD_POOL = []
 THREAD_CNT = 1
-optionslist = {"server_id":"DHCP Server", 66:"Boot File Server", 67:"Boot File Name", "subnet_mask":"Subnet Mask", "domain":"Domain", 121:"Static Routes"}
+optionslist = {"server_id":"DHCP Server", 66:"Boot File Server", 67:"Boot File Name", "subnet_mask":"Subnet Mask", "domain":"Domain", 121:"Static Routes",
+               "name_server":"DNS Servers", "router":"Gateway" }
 
 def usage():
     print "\n[-] Usage: The script takes one parameter, a network interface"
@@ -85,16 +86,29 @@ class send_dhcp(threading.Thread):
 
             myoptions = [
                 ("message-type", "discover"),
-                ("param_req_list", "\x01", "\x0f", "\x42", "\x43", "\x79"),
+                ("param_req_list", "\x01", "\x03", "\x06", "\x0f", "\x42", "\x43", "\x79"),
                 ("max_dhcp_size", 1500),
                 ("client_id", chr(1), mac2str(m)),
                 ("lease_time", 10000),
                 ("hostname", hostname),
                 ("end", '00000000000000')
             ]
+            dhcp_discover = Ether(src=mymac, dst="ff:ff:ff:ff:ff:ff") / IP(src="0.0.0.0",dst="255.255.255.255") / UDP(sport=68,dport=67) / BOOTP(chaddr=[mac2str(m)], 
+                                  xid=myxid, flags=0xFFFFFF) / DHCP(options=myoptions)
+            sendPacket(dhcp_discover) 
 
-            dhcp_discover = Ether(src=mymac, dst="ff:ff:ff:ff:ff:ff") / IP(src="0.0.0.0",dst="255.255.255.255") / UDP(sport=68,dport=67) / BOOTP(chaddr=[mac2str(m)], xid=myxid, flags=0xFFFFFF) / DHCP(options=myoptions)
-            sendPacket(dhcp_discover)
+            for x in range(1,4096):
+                myxid = random.randint(1, 900000000)
+                dhcp_discover = Ether(src=mymac, dst="ff:ff:ff:ff:ff:ff") / Dot1Q(vlan=x) / IP(src="0.0.0.0",dst="255.255.255.255") / UDP(sport=68,dport=67) / BOOTP(chaddr=[mac2str(m)], 
+                                  xid=myxid, flags=0xFFFFFF) / DHCP(options=myoptions) 
+                sendPacket(dhcp_discover)
+            
+            # Kill threads
+            for t in THREAD_POOL:
+                signal_handler(signal.SIGINT, 1)
+                t.join()
+
+
 
 class sniff_dhcp(threading.Thread):
     def __init__(self):
@@ -111,16 +125,27 @@ class sniff_dhcp(threading.Thread):
             if DHCP in pkt:
                 if pkt[DHCP] and pkt[DHCP].options[0][1] == 2:
                     self.dhcpcount = 0
-                    mymac = get_if_hwaddr(conf.iface)
                     myip = pkt[BOOTP].yiaddr
-                    sip = pkt[BOOTP].siaddr
                     localxid = pkt[BOOTP].xid
-
                     zearray = pkt[DHCP].options
-                    for item in zearray:
+                    print "Packet TransID: " + str(hex(localxid)) + "\n"
+                    print "\tIP Offered: " + myip
+
+                    # Parse keys with multiple values
+                    for i in range(0, len(zearray)):
+                        for s in range(0, len(zearray[i])):
+                            if zearray[i][s] == "name_server":
+                                yerray = list(zearray[i])
+                                yerray[1:len(yerray)] = [', '.join(yerray[1:len(yerray)])]
+
+                    # Remove the ones with multiple values
+                    letest = [i for i in zearray if i[0] != "name_server"]
+
+                    for item in letest:
                         if isinstance(item, (tuple, list)):
                             k, v = item
                             if k in optionslist:
+                                # Static Route Logic
                                 if k == 121:
                                     print "\t{}:".format(optionslist[k])
                                     final = []
@@ -128,6 +153,7 @@ class sniff_dhcp(threading.Thread):
                                     splitem = " ".join(v.encode('hex')[i:i+2] for i in range(0, len(v.encode('hex')), 2)).split()
                                     results = getstatics(splitem)
                                     
+                                    # Formatting
                                     for i in results:
                                         mask = str(int(i[0], 16))
                                         router = [str(int(x, 16)) for x in i[-4:]]
@@ -139,12 +165,17 @@ class sniff_dhcp(threading.Thread):
                                         router = '.'.join(router)
                                         print "\t\tRouter:%s\tSubnet:%s" % (router, ipjoin)
 
-                                else: 
+                                # Print normal key/value pairs
+                                else:
                                     print "\t{}: {}".format(optionslist[k],v)
 
-                    for t in THREAD_POOL:
-                        signal_handler(signal.SIGINT, 1)
-                        t.join()
+                    # For printing the keys with multiple values
+                    if yerray[0] in optionslist:
+                        print "\t{}: {}\n".format(optionslist[yerray[0]], yerray[1])
+
+                    print "---------------------------------------------------------------\n"
+
+
 
 def main():
     initialchecks() 
