@@ -20,6 +20,6 @@ foreach ($comp in $computers)
 		ForEach ($P in $Proc) {
 	    	$Userz = ($P.GetOwner()).User
 	    	for ($i=0; $i -le $Groupname.count; $i++){
-	  			if ([string]$Groupname[$i] -eq $Userz){
+	  			if ([string]$Groupname[$i].SamAccountName -eq $Userz){
 				write-host "$Userz is logged on $Computer"
 		}}}}}
