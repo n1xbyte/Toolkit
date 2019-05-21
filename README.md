@@ -1,5 +1,6 @@
 # MultiMac
-Multithreaded nmap scan that uses random MAC's. Scans the same host with various MAC's and compares results. Created for use against network monitoring deception software like CounterACT.
+Multithreaded nmap scan that uses random MAC's. Scans the same host with various MAC's and compares results. Created for use against network monitoring deception software like CounterACT.  
+
 ![image](https://user-images.githubusercontent.com/18420902/34954278-79a6fe0e-f9e5-11e7-8ec4-d1d53dfe6fda.png)
 
 # DHCPInfo 
